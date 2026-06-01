@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>DeepSeek 智能无障碍助手</title>
+    <!-- Tailwind CSS for modern responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#deff9a',
+                        darkBg: '#09090b',
+                        darkPanel: '#18181b',
+                        darkBorder: '#27272a'
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- PWA Manifest placeholder -->
+    <link id="pwa-manifest" rel="manifest">
+    <meta name="theme-color" content="#09090b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <style>
+        /* 隐藏滚动条但保留滚动能力 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 针对移动端软键盘弹出的高度优化 */
+        body {
+            height: 100dvh;
+            background-color: #09090b;
+            color: #f4f4f5;
+        }
+
+        /* 呼吸灯动画：用于思考和连接中 */
+        @keyframes pulse-subtle {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; transform: scale(1.02); }
+        }
+        .pulse-active { animation: pulse-subtle 2s infinite ease-in-out; }
+    </style>
+</head>
+<body class="flex flex-col overflow-hidden font-sans select-none antialiased">
+
+    <!-- 顶部状态栏及标题 -->
+    <header class="flex items-center justify-between border-b border-darkBorder bg-darkBg px-4 py-3 pb-4 safe-top z-10">
+        <div class="flex items-center space-x-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 border border-brand/30">
+                <i class="fa-solid fa-brain text-brand text-lg" aria-hidden="true"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-bold text-white tracking-wide">DeepSeek Pro</h1>
+                <div class="flex items-center space-x-1.5">
+                    <span id="connection-indicator" class="h-2 w-2 rounded-full bg-red-500"></span>
+                    <span id="connection-status" class="text-xs text-zinc-400">API 未配置</span>
+                </div>
+            </div>
+        </div>
+        <div class="flex space-x-2">
+            <!-- PWA 安装提示按钮 (默认隐藏) -->
+            <button id="install-pwa-btn" class="hidden flex h-10 items-center space-x-1.5 rounded-xl bg-brand px-3 text-sm font-bold text-black shadow-lg shadow-brand/10 active:scale-95 transition" aria-label="安装应用到桌面">
+                <i class="fa-solid fa-circle-down"></i>
+                <span>安装</span>
+            </button>
+            <button onclick="toggleSettings(true)" class="flex h-10 w-10 items-center justify-center rounded-xl border border-darkBorder bg-darkPanel text-zinc-300 active:bg-zinc-800 transition" aria-label="打开设置面板">
+                <i class="fa-solid fa-gear text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 核心消息展示区域 (读屏优化) -->
+    <main id="chat-scroller" class="flex-1 overflow-y-auto px-4 py-6 space-y-6 no-scrollbar" role="log" aria-label="聊天记录">
+        
+        <!-- 默认欢迎引导 -->
+        <div id="welcome-container" class="flex flex-col items-center justify-center text-center py-10 space-y-4 max-w-sm mx-auto">
+            <div class="h-16 w-16 rounded-3xl bg-brand/5 border border-brand/20 flex items-center justify-center">
+                <i class="fa-solid fa-compass text-brand text-3xl pulse-active"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white">欢迎使用全能无障碍助手</h2>
+            <p class="text-sm text-zinc-400 leading-relaxed">
+                点击下方按钮选择专属模式。配置好您的 API 密钥后，即可随时随地开展深度学习与推理。
+            </p>
+            <div class="text-xs text-brand/80 bg-brand/5 border border-brand/20 px-3 py-1.5 rounded-lg">
+                <i class="fa-solid fa-circle-info mr-1"></i> 支持本地安全加密，数据永不上传
+            </div>
+        </div>
+
+        <div id="chat-timeline" class="space-y-6">
+            <!-- 动态生成的消息气泡将插入此处 -->
+        </div>
+        
+        <!-- 思考状态显示器 (隐藏于读屏，避免杂音) -->
+        <div id="thinking-indicator" class="hidden flex items-start space-x-3" aria-hidden="true">
+            <div class="h-8 w-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+                <i class="fa-solid fa-spinner animate-spin text-brand text-sm"></i>
+            </div>
+            <div class="bg-darkPanel border border-darkBorder rounded-2xl px-4 py-3 max-w-[85%] text-sm text-zinc-400">
+                正在深度检索与推理中，请稍候...
+            </div>
+        </div>
+    </main>
+
+    <!-- 读屏专属隐藏提示通道 (彻底解决流式漏读的杀手锏) -->
+    <div id="accessible-announcer" class="sr-only" role="log" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- 底部输入及控制面板 -->
+    <footer class="border-t border-darkBorder bg-darkBg/95 backdrop-blur-md px-4 py-3 pb-safe-bottom z-10">
+        
+        <!-- 模式选择 Tab 栏 (语义化单选) -->
+        <div class="flex justify-between items-center bg-darkPanel p-1 rounded-xl mb-3 border border-darkBorder" role="radiogroup" aria-label="智能引擎模式选择">
+            <button onclick="switchMode('fast')" id="mode-btn-fast" class="mode-tab flex-1 py-2 text-xs font-bold rounded-lg text-brand bg-zinc-800 transition flex items-center justify-center space-x-1" role="radio" aria-checked="true">
+                <i class="fa-solid fa-bolt"></i>
+                <span>快速模式</span>
+            </button>
+            <button onclick="switchMode('think')" id="mode-btn-think" class="mode-tab flex-1 py-2 text-xs font-bold rounded-lg text-zinc-400 hover:text-zinc-200 transition flex items-center justify-center space-x-1" role="radio" aria-checked="false">
+                <i class="fa-solid fa-brain"></i>
+                <span>深度思考</span>
+            </button>
+            <button onclick="switchMode('mentor')" id="mode-btn-mentor" class="mode-tab flex-1 py-2 text-xs font-bold rounded-lg text-zinc-400 hover:text-zinc-200 transition flex items-center justify-center space-x-1" role="radio" aria-checked="false">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <span>全能导师</span>
+            </button>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="flex items-end space-x-2">
+            <!-- 清除上下文按钮 -->
+            <button onclick="clearChatHistory()" class="flex h-12 w-12 items-center justify-center rounded-xl border border-darkBorder bg-darkPanel text-zinc-400 active:text-red-400 active:bg-red-500/10 active:border-red-500/20 transition" aria-label="清除当前对话记录">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+            
+            <!-- 输入框容器 -->
+            <div class="flex-1 relative flex items-center bg-darkPanel border border-darkBorder rounded-xl focus-within:border-brand transition">
+                <textarea id="user-input" rows="1" class="w-full pl-3 pr-10 py-3.5 bg-transparent text-white text-sm placeholder-zinc-500 focus:outline-none resize-none no-scrollbar max-h-32" placeholder="给助手发消息..." aria-label="消息输入框"></textarea>
+            </div>
+
+            <!-- 发送按钮 -->
+            <button id="send-btn" onclick="sendMessage()" class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-black font-bold active:scale-95 disabled:opacity-30 disabled:scale-100 transition shadow-lg shadow-brand/10" aria-label="发送消息" disabled>
+                <i class="fa-solid fa-paper-plane text-base"></i>
+            </button>
+        </div>
+    </footer>
+
+    <!-- 设置面板 (抽屉式 Slide Up Modal) -->
+    <div id="settings-overlay" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 transition-opacity duration-300" onclick="toggleSettings(false)">
+        <div class="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-darkPanel border-t border-darkBorder rounded-t-[2rem] px-6 py-6 pb-safe-bottom flex flex-col overflow-y-auto no-scrollbar" onclick="event.stopPropagation()">
+            
+            <!-- 头部控制 -->
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center space-x-2.5">
+                    <i class="fa-solid fa-sliders text-brand text-xl"></i>
+                    <h3 class="text-lg font-bold text-white">引擎配置</h3>
+                </div>
+                <button onclick="toggleSettings(false)" class="h-8 w-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400" aria-label="关闭设置">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- 配置项表单 -->
+            <div class="space-y-5">
+                <div>
+                    <label for="set-base-url" class="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">API 接口地址 (Base URL)</label>
+                    <input type="text" id="set-base-url" class="w-full bg-darkBg border border-darkBorder rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand transition" placeholder="例如 https://api.deepseek.com/v1">
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="set-api-key" class="block text-xs font-bold text-zinc-400 uppercase tracking-wider">API 密钥 (API Key)</label>
+                        <button onclick="toggleApiKeyVisibility()" class="text-xs text-brand/80 hover:text-brand" id="visibility-toggle">显示明文</button>
+                    </div>
+                    <input type="password" id="set-api-key" class="w-full bg-darkBg border border-darkBorder rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand transition" placeholder="sk-...">
+                </div>
+
+                <!-- 高级模型自定义 (可自适应不同的中转服务) -->
+                <div class="border-t border-darkBorder/60 pt-4">
+                    <h4 class="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">模型参数自定义 (支持重写)</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="model-fast" class="block text-[11px] text-zinc-500 mb-1">快速模式模型</label>
+                            <input type="text" id="model-fast" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-brand" placeholder="deepseek-chat">
+                        </div>
+                        <div>
+                            <label for="model-think" class="block text-[11px] text-zinc-500 mb-1">深度思考模型</label>
+                            <input type="text" id="model-think" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-brand" placeholder="deepseek-reasoning">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 验证并保存控制 -->
+                <div class="pt-2">
+                    <button id="verify-save-btn" onclick="verifyAndSaveConfig()" class="w-full py-3.5 bg-brand text-black font-bold rounded-xl active:scale-95 transition shadow-lg shadow-brand/10 flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-shield-check"></i>
+                        <span>验证连接并保存</span>
+                    </button>
+                </div>
+
+                <!-- 离线语音设置 -->
+                <div class="bg-zinc-900/60 rounded-xl p-3 border border-darkBorder text-zinc-400 text-xs flex flex-col space-y-2">
+                    <span class="font-bold text-zinc-300"><i class="fa-solid fa-microphone-lines mr-1.5 text-brand"></i> 系统朗读(TTS)设置</span>
+                    <p class="leading-relaxed">应用配有高级无障碍朗读通道。在每条AI输出结束时，可一键调用设备中的高性能引擎进行顺畅发音。</p>
+                    <div class="flex items-center justify-between pt-1">
+                        <span>语速控制 (Speed)</span>
+                        <div class="flex items-center space-x-2">
+                            <input type="range" id="tts-rate" min="0.5" max="2" step="0.1" value="1.0" class="accent-brand bg-zinc-800 rounded-lg">
+                            <span id="rate-value" class="w-8 text-right font-mono">1.0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 核心逻辑 -->
+    <script>
+        // --- 1. PWA 动态生成与注册 (绝对单文件独立运行) ---
+        const appTitle = "DeepSeek 无障碍助手";
+        const appThemeColor = "#09090b";
+        
+        // 动态构建 Manifest
+        const manifestObj = {
+            name: appTitle,
+            short_name: "DeepSeekPro",
+            start_url: ".",
+            display: "standalone",
+            orientation: "portrait",
+            background_color: appThemeColor,
+            theme_color: appThemeColor,
+            icons: [
+                {
+                    src: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23121212' stroke='%23deff9a' stroke-width='6'/><path d='M30,42 Q50,72 70,42 M35,47 Q50,67 65,47 M40,52 Q50,62 60,52' stroke='%23deff9a' stroke-width='5' fill='none' stroke-linecap='round'/></svg>",
+                    sizes: "192x192",
+                    type: "image/svg+xml"
+                },
+                {
+                    src: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23121212' stroke='%23deff9a' stroke-width='6'/><path d='M30,42 Q50,72 70,42 M35,47 Q50,67 65,47 M40,52 Q50,62 60,52' stroke='%23deff9a' stroke-width='5' fill='none' stroke-linecap='round'/></svg>",
+                    sizes: "512x512",
+                    type: "image/svg+xml"
+                }
+            ]
+        };
+
+        const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
+        document.getElementById('pwa-manifest').setAttribute('href', URL.createObjectURL(manifestBlob));
+
+        // 注册 Service Worker (利用 Data URI 绕过外置文件限制)
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'deepseek-pwa-v1';
+                self.addEventListener('install', (e) => {
+                    self.skipWaiting();
+                });
+                self.addEventListener('activate', (e) => {
+                    e.waitUntil(clients.claim());
+                });
+                self.addEventListener('fetch', (e) => {
+                    e.respondWith(
+                        fetch(e.request).catch(() => caches.match(e.request))
+                    );
+                });
+            `;
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            navigator.serviceWorker.register(URL.createObjectURL(swBlob))
+                .catch(err => console.log('PWA ServiceWorker 注册略过: ', err));
+        }
+
+        // PWA 安装事件监听
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('install-pwa-btn');
+            if (installBtn) installBtn.classList.remove('hidden');
+        });
+
+        document.getElementById('install-pwa-btn')?.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    document.getElementById('install-pwa-btn').classList.add('hidden');
+                }
+                deferredPrompt = null;
+            }
+        });
+
+        // --- 2. 应用状态与本地化管理 ---
+        const CONFIG_KEY = 'DS_ACC_CONFIG';
+        const CHAT_KEY = 'DS_ACC_CHAT';
+        
+        let appState = {
+            baseUrl: 'https://api.deepseek.com/v1',
+            apiKey: '',
+            modelFast: 'deepseek-chat',
+            modelThink: 'deepseek-reasoning',
+            currentMode: 'fast', // fast, think, mentor
+            chatHistory: [],
+            isGenerating: false
+        };
+
+        // 默认 System Prompts
+        const SYSTEM_PROMPTS = {
+            fast: "你是一个高效、实用的全能助手。请直接、精炼地回答用户的问题，避免废话和长篇大论，直接给核心结论。",
+            think: "你是一个极具洞察力与逻辑推演能力的顶级专家学者。请全面、严谨、多维度地对问题进行全景分析，层层剥离逻辑，揭示底层逻辑。必须展示推理过程，确保结论极其扎实和全面。",
+            mentor: "你是一位精通苏格拉底教学法的全能导师。无论面对中医学、现代科学、哲学、历史、还是编程或文学，你都绝对不能直接给出最终答案。你的目标是启发学生学习。你的回答必须遵循以下三步结构：\n1. 深入浅出地阐明或归纳用户提出的核心概念。\n2. 提供一个极其生动、跨领域且通俗的生活化比喻帮助其彻底消化。\n3. 主动提出一个具有启发性、难度适中的引导式问题，引导学生自己去寻找答案，带其层层递进。始终保持耐心与鼓励的教授姿态。"
+        };
+
+        // --- 3. 初始化与界面控制 ---
+        window.addEventListener('load', () => {
+            loadConfig();
+            renderChatHistory();
+            setupInputAutoResize();
+            updateModeUI();
+            updateTTSValue();
+        });
+
+        function loadConfig() {
+            const raw = localStorage.getItem(CONFIG_KEY);
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    appState.baseUrl = parsed.baseUrl || 'https://api.deepseek.com/v1';
+                    appState.apiKey = parsed.apiKey || '';
+                    appState.modelFast = parsed.modelFast || 'deepseek-chat';
+                    appState.modelThink = parsed.modelThink || 'deepseek-reasoning';
+                } catch (e) {
+                    console.error("加载配置失败:", e);
+                }
+            }
+            
+            // 同步至设置 UI
+            document.getElementById('set-base-url').value = appState.baseUrl;
+            document.getElementById('set-api-key').value = appState.apiKey;
+            document.getElementById('model-fast').value = appState.modelFast;
+            document.getElementById('model-think').value = appState.modelThink;
+
+            updateConnectionStatus();
+        }
+
+        function updateConnectionStatus() {
+            const ind = document.getElementById('connection-indicator');
+            const txt = document.getElementById('connection-status');
+            if (appState.apiKey) {
+                ind.className = "h-2 w-2 rounded-full bg-emerald-500 pulse-active";
+                txt.textContent = "已就绪";
+            } else {
+                ind.className = "h-2 w-2 rounded-full bg-red-500";
+                txt.textContent = "API 未配置";
+            }
+        }
+
+        function toggleSettings(show) {
+            const overlay = document.getElementById('settings-overlay');
+            if (show) {
+                overlay.classList.remove('hidden');
+                setTimeout(() => overlay.classList.add('opacity-100'), 50);
+            } else {
+                overlay.classList.remove('opacity-100');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }
+        }
+
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('set-api-key');
+            const btn = document.getElementById('visibility-toggle');
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '隐藏密文';
+            } else {
+                input.type = 'password';
+                btn.textContent = '显示明文';
+            }
+        }
+
+        function updateTTSValue() {
+            const range = document.getElementById('tts-rate');
+            const display = document.getElementById('rate-value');
+            range.addEventListener('input', () => {
+                display.textContent = parseFloat(range.value).toFixed(1);
+            });
+        }
+
+        // --- 4. API 连通性测试与配置保存 ---
+        async function verifyAndSaveConfig() {
+            const btn = document.getElementById('verify-save-btn');
+            const originalContent = btn.innerHTML;
+            
+            const url = document.getElementById('set-base-url').value.trim();
+            const key = document.getElementById('set-api-key').value.trim();
+            const fastM = document.getElementById('model-fast').value.trim() || 'deepseek-chat';
+            const thinkM = document.getElementById('model-think').value.trim() || 'deepseek-reasoning';
+
+            if (!key) {
+                showToast("请输入有效 API Key", "error");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> <span>正在验证连接...</span>`;
+
+            // 轻量发送测试
+            try {
+                const response = await fetch(`${url}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${key}`
+                    },
+                    body: JSON.stringify({
+                        model: fastM,
+                        messages: [{ role: 'user', content: 'hi' }],
+                        max_tokens: 5
+                    })
+                });
+
+                if (response.ok) {
+                    // 保存数据
+                    appState.baseUrl = url;
+                    appState.apiKey = key;
+                    appState.modelFast = fastM;
+                    appState.modelThink = thinkM;
+
+                    localStorage.setItem(CONFIG_KEY, JSON.stringify({
+                        baseUrl: url,
+                        apiKey: key,
+                        modelFast: fastM,
+                        modelThink: thinkM
+                    }));
+
+                    updateConnectionStatus();
+                    showToast("验证成功，配置已安全保存在本地！", "success");
+                    // 触觉反馈 (如果设备支持)
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    
+                    setTimeout(() => toggleSettings(false), 800);
+                } else {
+                    const errDetail = await response.text();
+                    console.error(errDetail);
+                    showToast(`连接失败: HTTP ${response.status}`, "error");
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("连接超时或域名解析错误，请确认 VPN 状态", "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
+
+        // --- 5. 输入框自适应与回车事件控制 ---
+        function setupInputAutoResize() {
+            const textarea = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            
+            textarea.addEventListener('input', () => {
+                textarea.style.height = 'auto';
+                textarea.style.height = textarea.scrollHeight + 'px';
+                sendBtn.disabled = !textarea.value.trim();
+            });
+
+            // 手机回车触发发送而非直接换行 (对无障碍特别友好)
+            textarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!sendBtn.disabled) sendMessage();
+                }
+            });
+        }
+
+        // --- 6. 核心模式切换控制 ---
+        function switchMode(mode) {
+            appState.currentMode = mode;
+            updateModeUI();
+            
+            // 无障碍播报
+            const modesCN = { fast: "快速模式", think: "深度思考模式", mentor: "全能启发式导师模式" };
+            announceAccessibility(`已切换至 ${modesCN[mode]}`);
+        }
+
+        function updateModeUI() {
+            const tabs = ['fast', 'think', 'mentor'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`mode-btn-${t}`);
+                if (t === appState.currentMode) {
+                    btn.className = "mode-tab flex-1 py-2 text-xs font-bold rounded-lg text-black bg-brand transition flex items-center justify-center space-x-1";
+                    btn.setAttribute('aria-checked', 'true');
+                } else {
+                    btn.className = "mode-tab flex-1 py-2 text-xs font-bold rounded-lg text-zinc-400 hover:text-zinc-200 transition flex items-center justify-center space-x-1";
+                    btn.setAttribute('aria-checked', 'false');
+                }
+            });
+        }
+
+        // --- 7. 对话存储与清除 ---
+        function clearChatHistory() {
+            if (confirm("确定要清空全部聊天记录吗？")) {
+                appState.chatHistory = [];
+                localStorage.removeItem(CHAT_KEY);
+                renderChatHistory();
+                announceAccessibility("已清空聊天记录");
+            }
+        }
+
+        // --- 8. 消息构建与 Markdown 语义解析渲染 ---
+        function renderChatHistory() {
+            const timeline = document.getElementById('chat-timeline');
+            const welcome = document.getElementById('welcome-container');
+            
+            // 尝试读取本地缓存
+            const cached = localStorage.getItem(CHAT_KEY);
+            if (cached && appState.chatHistory.length === 0) {
+                appState.chatHistory = JSON.parse(cached);
+            }
+
+            if (appState.chatHistory.length === 0) {
+                timeline.innerHTML = '';
+                welcome.classList.remove('hidden');
+                return;
+            }
+
+            welcome.classList.add('hidden');
+            timeline.innerHTML = '';
+            
+            appState.chatHistory.forEach(msg => {
+                appendMessageBubble(msg.role, msg.content, msg.reasoning, false);
+            });
+            scrollChatToBottom();
+        }
+
+        // 核心渲染气泡构建 (深度兼容无障碍)
+        function appendMessageBubble(role, content, reasoning = '', isIncremental = false) {
+            const timeline = document.getElementById('chat-timeline');
+            const welcome = document.getElementById('welcome-container');
+            welcome.classList.add('hidden');
+
+            const idSuffix = isIncremental ? 'active' : Math.random().toString(36).substr(2, 9);
+            let bubble = document.getElementById(`bubble-${role}-${idSuffix}`);
+
+            if (!bubble) {
+                bubble = document.createElement('div');
+                bubble.id = `bubble-${role}-${idSuffix}`;
+                bubble.className = `flex flex-col space-y-1.5 ${role === 'user' ? 'items-end' : 'items-start'}`;
+                
+                let contentHTML = '';
+                if (role === 'user') {
+                    contentHTML = `
+                        <div class="bg-brand text-black font-medium text-sm rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] shadow-md select-text" role="document">
+                            ${cleanMarkdown(content)}
+                        </div>
+                    `;
+                } else {
+                    // AI 的卡片设计：思考模块 + 最终答案
+                    contentHTML = `
+                        <div class="flex items-start space-x-2.5 w-full">
+                            <div class="h-8 w-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+                                <i class="fa-solid text-zinc-300 text-xs ${appState.currentMode === 'mentor' ? 'fa-graduation-cap' : 'fa-robot'}"></i>
+                            </div>
+                            <div class="flex-1 space-y-2.5 max-w-[85%]">
+                                <!-- 思维链展示 (使用 aria-hidden 对读屏屏蔽，消除杂音) -->
+                                <div id="reasoning-container-${idSuffix}" class="hidden bg-zinc-950/40 border border-zinc-900 rounded-xl px-3.5 py-2.5" aria-hidden="true">
+                                    <button onclick="toggleReasoningDetails('${idSuffix}')" class="flex items-center space-x-2 text-zinc-500 hover:text-zinc-400 text-xs font-bold focus:outline-none">
+                                        <i class="fa-solid fa-brain-circuit"></i>
+                                        <span>深度检索思考过程</span>
+                                        <i id="reasoning-arrow-${idSuffix}" class="fa-solid fa-chevron-right transition"></i>
+                                    </button>
+                                    <div id="reasoning-text-${idSuffix}" class="hidden mt-2 text-xs text-zinc-500 font-mono leading-relaxed border-l-2 border-zinc-800 pl-2.5 whitespace-pre-wrap select-text"></div>
+                                </div>
+                                
+                                <!-- 终极回答区域 (全语义化 article 以便于精确定向读屏) -->
+                                <article id="answer-box-${idSuffix}" class="bg-darkPanel border border-darkBorder rounded-2xl rounded-tl-sm px-4 py-3 text-zinc-100 text-sm leading-relaxed space-y-3 select-text" role="document" aria-label="AI 回答内容">
+                                    <div id="answer-text-${idSuffix}" class="space-y-2.5"></div>
+                                    
+                                    <!-- 底部智能操作栏 (包括无障碍原声朗读) -->
+                                    <div class="flex items-center space-x-3 pt-2.5 border-t border-darkBorder/40 text-xs text-zinc-500">
+                                        <button onclick="speakMessage('${idSuffix}')" id="tts-btn-${idSuffix}" class="flex items-center space-x-1.5 hover:text-brand bg-zinc-900 px-2.5 py-1.5 rounded-lg active:scale-95 transition" aria-label="语音朗读该条回复">
+                                            <i class="fa-solid fa-volume-high"></i>
+                                            <span id="tts-label-${idSuffix}">语音朗读</span>
+                                        </button>
+                                        <button onclick="copyToClipboard(this)" class="flex items-center space-x-1.5 hover:text-brand bg-zinc-900 px-2.5 py-1.5 rounded-lg active:scale-95 transition" aria-label="复制回复内容">
+                                            <i class="fa-solid fa-copy"></i>
+                                            <span>复制</span>
+                                        </button>
+                                    </div>
+                                </article>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                bubble.innerHTML = contentHTML;
+                timeline.appendChild(bubble);
+            }
+
+            // 更新动态内容
+            if (role === 'assistant') {
+                // 处理思考内容
+                const resContainer = document.getElementById(`reasoning-container-${idSuffix}`);
+                const resText = document.getElementById(`reasoning-text-${idSuffix}`);
+                if (reasoning) {
+                    resContainer.classList.remove('hidden');
+                    resText.textContent = reasoning;
+                }
+
+                // 处理最终正文
+                const ansText = document.getElementById(`answer-text-${idSuffix}`);
+                ansText.innerHTML = cleanMarkdown(content);
+            }
+
+            scrollChatToBottom();
+        }
+
+        // 简易精准的 Markdown 清理过滤器 (不干扰无障碍解析)
+        function cleanMarkdown(text) {
+            if (!text) return '<span class="pulse-active text-zinc-500">▋ 正在思索</span>';
+            
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // 转换标题
+            html = html.replace(/^###\s+(.+)$/gm, '<h4 class="text-base font-bold text-white mt-3 mb-1.5">$1</h4>');
+            html = html.replace(/^##\s+(.+)$/gm, '<h3 class="text-lg font-bold text-white mt-4 mb-2">$1</h3>');
+            html = html.replace(/^#\s+(.+)$/gm, '<h2 class="text-xl font-bold text-white mt-5 mb-2.5">$1</h2>');
+
+            // 转换加粗
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-brand">$1</strong>');
+            
+            // 转换列表项 (WAI-ARIA 友好格式)
+            html = html.replace(/^\s*[-*+]\s+(.+)$/gm, '<li class="ml-4 list-disc pl-1">$1</li>');
+            html = html.replace(/^\s*(\d+)\.\s+(.+)$/gm, '<li class="ml-4 list-decimal pl-1">$2</li>');
+
+            // 转换行内代码
+            html = html.replace(/`(.*?)`/g, '<code class="bg-zinc-900 text-brand px-1.5 py-0.5 rounded font-mono text-xs">$1</code>');
+
+            // 段落与换行包裹
+            const paragraphs = html.split(/\n{2,}/);
+            const wrapped = paragraphs.map(p => {
+                if (p.startsWith('<li')) {
+                    return `<ul class="space-y-1 my-2" role="list">${p}</ul>`;
+                }
+                if (p.trim()) {
+                    return `<p class="mb-2 leading-relaxed">${p.replace(/\n/g, '<br>')}</p>`;
+                }
+                return '';
+            }).join('');
+
+            return wrapped;
+        }
+
+        // 控制思考栏折叠
+        function toggleReasoningDetails(id) {
+            const box = document.getElementById(`reasoning-text-${id}`);
+            const arrow = document.getElementById(`reasoning-arrow-${id}`);
+            if (box.classList.contains('hidden')) {
+                box.classList.remove('hidden');
+                arrow.classList.add('rotate-90');
+            } else {
+                box.classList.add('hidden');
+                arrow.classList.remove('rotate-90');
+            }
+        }
+
+        function scrollChatToBottom() {
+            const scroller = document.getElementById('chat-scroller');
+            scroller.scrollTop = scroller.scrollHeight;
+        }
+
+        // --- 9. 发送消息与流式处理核心 (包含退避重试) ---
+        async function sendMessage() {
+            if (appState.isGenerating) return;
+
+            const inputEl = document.getElementById('user-input');
+            const userContent = inputEl.value.trim();
+            if (!userContent) return;
+
+            if (!appState.apiKey) {
+                showToast("请先在设置中导入您的 API 密钥", "error");
+                toggleSettings(true);
+                return;
+            }
+
+            // 清理输入，重置状态
+            inputEl.value = '';
+            inputEl.style.height = 'auto';
+            document.getElementById('send-btn').disabled = true;
+
+            // 压入用户气泡并更新上下文
+            appendMessageBubble('user', userContent);
+            appState.chatHistory.push({ role: 'user', content: userContent });
+            saveChatHistory();
+
+            // AI 气泡初始化
+            appState.isGenerating = true;
+            document.getElementById('thinking-indicator').classList.remove('hidden');
+            scrollChatToBottom();
+
+            appendMessageBubble('assistant', '', '', true);
+
+            // 组合请求体
+            const currentSystemPrompt = SYSTEM_PROMPTS[appState.currentMode];
+            const requestMessages = [
+                { role: 'system', content: currentSystemPrompt },
+                ...appState.chatHistory.map(h => ({ role: h.role, content: h.content }))
+            ];
+
+            const activeModel = appState.currentMode === 'think' ? appState.modelThink : appState.modelFast;
+
+            let bufferContent = '';
+            let bufferReasoning = '';
+            let sentenceBuffer = ''; // 用于防漏读段落无障碍缓冲器
+
+            // 执行请求 (最大5次重试退避)
+            const maxRetries = 5;
+            let success = false;
+            let retryDelay = 1000;
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(`${appState.baseUrl}/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${appState.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: activeModel,
+                            messages: requestMessages,
+                            stream: true
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    document.getElementById('thinking-indicator').classList.add('hidden');
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    let done = false;
+                    let rest = '';
+
+                    while (!done) {
+                        const { value, done: readerDone } = await reader.read();
+                        done = readerDone;
+                        if (value) {
+                            const chunk = decoder.decode(value, { stream: !done });
+                            const lines = (rest + chunk).split('\n');
+                            rest = lines.pop();
+
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    const rawJson = line.slice(6).trim();
+                                    if (rawJson === '[DONE]') continue;
+                                    
+                                    try {
+                                        const parsed = JSON.parse(rawJson);
+                                        const delta = parsed.choices[0].delta;
+                                        
+                                        // 提取深度思考过程 (Reasoning)
+                                        if (delta.reasoning_content) {
+                                            bufferReasoning += delta.reasoning_content;
+                                        }
+                                        
+                                        // 提取最终内容 (Content)
+                                        if (delta.content) {
+                                            bufferContent += delta.content;
+                                            sentenceBuffer += delta.content;
+
+                                            // 当触发标点符号句号，进行一次无障碍播报缓冲更新
+                                            if (/[。！？\n]/.test(delta.content)) {
+                                                announceSentenceBuffer(sentenceBuffer);
+                                                sentenceBuffer = '';
+                                            }
+                                        }
+
+                                        // 动态更新页面流式输出
+                                        updateActiveBubble(bufferContent, bufferReasoning);
+
+                                    } catch (e) {
+                                        // 忽略异常切片
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 流结束，补充未读完的缓冲
+                    if (sentenceBuffer.trim()) {
+                        announceSentenceBuffer(sentenceBuffer);
+                    }
+
+                    success = true;
+                    break; // 结束重试循环
+
+                } catch (err) {
+                    console.error(`尝试第 ${attempt + 1} 次失败:`, err);
+                    if (attempt < maxRetries - 1) {
+                        await new Promise(res => setTimeout(res, retryDelay));
+                        retryDelay *= 2; // 指数倍增退避
+                    } else {
+                        document.getElementById('thinking-indicator').classList.add('hidden');
+                        showToast(`服务器响应超时，请检查您的科学上网连接`, "error");
+                        updateActiveBubble("🚨 **请求失败**。由于由于当前移动端网络不畅，导致数据传输中断。请确保您的科学上网或代理已开启，点击下方清除按钮后重试。");
+                    }
+                }
+            }
+
+            if (success) {
+                // 保存最终结果并重塑节点 ID
+                finalizeActiveBubble(bufferContent, bufferReasoning);
+            }
+
+            appState.isGenerating = false;
+        }
+
+        function updateActiveBubble(content, reasoning) {
+            const activeBubble = document.getElementById('bubble-assistant-active');
+            if (activeBubble) {
+                const resContainer = document.getElementById('reasoning-container-active');
+                const resText = document.getElementById('reasoning-text-active');
+                const ansText = document.getElementById('answer-text-active');
+
+                if (reasoning) {
+                    resContainer.classList.remove('hidden');
+                    resText.textContent = reasoning;
+                }
+
+                ansText.innerHTML = cleanMarkdown(content);
+                scrollChatToBottom();
+            }
+        }
+
+        function finalizeActiveBubble(content, reasoning) {
+            const activeBubble = document.getElementById('bubble-assistant-active');
+            if (activeBubble) {
+                const newId = Math.random().toString(36).substr(2, 9);
+                
+                // 更写全部动态元素的 ID
+                activeBubble.id = `bubble-assistant-${newId}`;
+                document.getElementById('reasoning-container-active').id = `reasoning-container-${newId}`;
+                document.getElementById('reasoning-text-active').id = `reasoning-text-${newId}`;
+                document.getElementById('answer-box-active').id = `answer-box-${newId}`;
+                document.getElementById('answer-text-active').id = `answer-text-${newId}`;
+                document.getElementById('tts-btn-active').setAttribute('onclick', `speakMessage('${newId}')`);
+                document.getElementById('tts-btn-active').id = `tts-btn-${newId}`;
+                document.getElementById('tts-label-active').id = `tts-label-${newId}`;
+                
+                const arrowBtn = activeBubble.querySelector('button[onclick*="active"]');
+                if (arrowBtn) arrowBtn.setAttribute('onclick', `toggleReasoningDetails('${newId}')`);
+
+                // 存盘
+                appState.chatHistory.push({ role: 'assistant', content: content, reasoning: reasoning });
+                saveChatHistory();
+            }
+        }
+
+        function saveChatHistory() {
+            localStorage.setItem(CHAT_KEY, JSON.stringify(appState.chatHistory));
+        }
+
+        // --- 10. 无障碍读屏防漏读机制 (的核心) ---
+        function announceSentenceBuffer(text) {
+            const cleanText = text.replace(/[*#`_\-]/g, '').trim();
+            if (!cleanText) return;
+            
+            const announcer = document.getElementById('accessible-announcer');
+            // 清理并重新触发 polite 更新，读屏软件会自动捕捉
+            announcer.textContent = '';
+            setTimeout(() => {
+                announcer.textContent = cleanText;
+            }, 50);
+        }
+
+        function announceAccessibility(text) {
+            const announcer = document.getElementById('accessible-announcer');
+            announcer.textContent = '';
+            setTimeout(() => {
+                announcer.textContent = text;
+            }, 50);
+        }
+
+        // --- 11. 系统级 Text-to-Speech (TTS) 支持 ---
+        let currentUtterance = null;
+        let activeSpeakerId = null;
+
+        function speakMessage(id) {
+            const btn = document.getElementById(`tts-btn-${id}`);
+            const label = document.getElementById(`tts-label-${id}`);
+            
+            // 如果已经正在朗读当前这个气泡，则是暂停/继续切换
+            if (activeSpeakerId === id && currentUtterance) {
+                if (window.speechSynthesis.speaking) {
+                    if (window.speechSynthesis.paused) {
+                        window.speechSynthesis.resume();
+                        label.textContent = "正在朗读";
+                        btn.classList.add('text-brand');
+                        announceAccessibility("继续朗读");
+                    } else {
+                        window.speechSynthesis.pause();
+                        label.textContent = "已暂停";
+                        btn.classList.remove('text-brand');
+                        announceAccessibility("朗读暂停");
+                    }
+                    return;
+                }
+            }
+
+            // 否则，停止一切活动并重新朗读
+            window.speechSynthesis.cancel();
+
+            const textToSpeak = document.getElementById(`answer-text-${id}`).innerText;
+            if (!textToSpeak) return;
+
+            // 清理干扰符号，朗读体验更纯净
+            const cleanText = textToSpeak.replace(/[`*_\-#]/g, '');
+
+            currentUtterance = new SpeechSynthesisUtterance(cleanText);
+            
+            // 语速设置
+            const rate = parseFloat(document.getElementById('tts-rate').value) || 1.0;
+            currentUtterance.rate = rate;
+
+            // 寻找手机本地最高质量的中/英文语音包
+            const voices = window.speechSynthesis.getVoices();
+            const preferredVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('ZH'));
+            if (preferredVoice) currentUtterance.voice = preferredVoice;
+
+            activeSpeakerId = id;
+            btn.classList.add('text-brand');
+            label.textContent = "正在朗读";
+
+            currentUtterance.onend = () => {
+                btn.classList.remove('text-brand');
+                label.textContent = "语音朗读";
+                currentUtterance = null;
+                activeSpeakerId = null;
+            };
+
+            currentUtterance.onerror = (e) => {
+                console.error("朗读错误:", e);
+                btn.classList.remove('text-brand');
+                label.textContent = "语音朗读";
+                currentUtterance = null;
+                activeSpeakerId = null;
+            };
+
+            window.speechSynthesis.speak(currentUtterance);
+        }
+
+        // --- 12. 自研安全剪贴板复制 (防 Iframe 屏蔽) ---
+        function copyToClipboard(button) {
+            const container = button.closest('article');
+            const pText = container.querySelector('[id^="answer-text-"]').innerText;
+            
+            const tempTextarea = document.createElement('textarea');
+            tempTextarea.value = pText;
+            tempTextarea.style.position = 'fixed';
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
+            
+            try {
+                document.execCommand('copy');
+                const label = button.querySelector('span');
+                const icon = button.querySelector('i');
+                
+                label.textContent = "已复制";
+                icon.className = "fa-solid fa-check text-emerald-500";
+                
+                if (navigator.vibrate) navigator.vibrate(50);
+                announceAccessibility("复制成功");
+
+                setTimeout(() => {
+                    label.textContent = "复制";
+                    icon.className = "fa-solid fa-copy";
+                }, 2000);
+            } catch (err) {
+                showToast("复制失败，您的设备不支持当前脚本复制", "error");
+            } finally {
+                document.body.removeChild(tempTextarea);
+            }
+        }
+
+        // --- 13. 轻量化定制浮窗通知 ---
+        function showToast(message, type = "success") {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-6 left-1/2 transform -translate-x-1/2 px-4 py-3 rounded-xl text-sm font-bold shadow-2xl z-50 transition duration-300 transform scale-90 translate-y-2 opacity-0 ${
+                type === 'success' ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'
+            }`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-0', 'scale-90', 'translate-y-2');
+                toast.classList.add('opacity-100', 'scale-100', 'translate-y-0');
+            }, 50);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'scale-90', 'translate-y-2');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
